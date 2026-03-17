@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Storm Watch</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── SIDEBAR ───────────────────────────────── -->
+  <aside id="sidebar">
+
+    <div class="logo">
+      <div class="logo-mark">⛈</div>
+      <div>
+        <div class="logo-text">Storm Watch</div>
+        <div class="logo-sub">Live Radar</div>
+      </div>
+    </div>
+
+    <!-- Clock + location -->
+    <div id="clock-block">
+      <div id="time-display">--:--</div>
+      <div id="date-display">Loading...</div>
+      <div id="location-display">📍 Johns Creek, GA</div>
+    </div>
+
+    <!-- Current conditions -->
+    <div class="glass-card" id="temp-card">
+      <div class="card-label">Current Conditions</div>
+      <div id="temp-icon">🌡️</div>
+      <div id="temp-row">
+        <span id="temp-value">--</span><span id="temp-unit">°F</span>
+      </div>
+      <div id="condition-text">Fetching…</div>
+      <div id="feels-like">Feels like --°F</div>
+    </div>
+
+    <!-- Atmospheric stats -->
+    <div class="glass-card">
+      <div class="card-label">Atmospheric</div>
+      <div id="stats-grid">
+        <div class="stat">
+          <div class="stat-lbl">Humidity</div>
+          <div class="stat-val" id="s-humidity">--<span class="stat-unit">%</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Wind</div>
+          <div class="stat-val" id="s-wind">--<span class="stat-unit">mph</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Dew Pt</div>
+          <div class="stat-val" id="s-dew">--<span class="stat-unit">°F</span></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Visibility</div>
+          <div class="stat-val" id="s-vis">--<span class="stat-unit">mi</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map layer switcher -->
+    <div class="card-label">Map Layer</div>
+    <div id="overlay-btns">
+      <button class="ov-btn active" data-overlay="radar"    data-product="radar">Radar</button>
+      <button class="ov-btn"        data-overlay="rainAccu" data-product="rainAccu">Rain</button>
+      <button class="ov-btn"        data-overlay="wind"     data-product="ecmwf">Wind</button>
+      <button class="ov-btn"        data-overlay="temp"     data-product="ecmwf">Temp</button>
+      <button class="ov-btn"        data-overlay="clouds"   data-product="ecmwf">Clouds</button>
+    </div>
+
+    <button id="locate-btn">📍 Update Location</button>
+
+  </aside>
+
+  <!-- ── MAP (Windy embed) ──────────────────────── -->
+  <div id="map-wrap">
+    <iframe id="windy-frame" src="" allowfullscreen></iframe>
+    <div id="live-pill">
+      <div class="pulse-dot"></div>
+      <span id="pill-text">Windy Live</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- App logic -->
+<script src="app.js"></script>
+</body>
+</html>
