@@ -7,6 +7,8 @@
 
   <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <!-- Styles -->
   <link rel="stylesheet" href="style.css"/>
 </head>
@@ -68,28 +70,61 @@
     <!-- Map layer switcher -->
     <div class="card-label">Map Layer</div>
     <div id="overlay-btns">
-      <button class="ov-btn active" data-overlay="radar"    data-product="radar">Radar</button>
-      <button class="ov-btn"        data-overlay="rainAccu" data-product="rainAccu">Rain</button>
-      <button class="ov-btn"        data-overlay="wind"     data-product="ecmwf">Wind</button>
-      <button class="ov-btn"        data-overlay="temp"     data-product="ecmwf">Temp</button>
-      <button class="ov-btn"        data-overlay="clouds"   data-product="ecmwf">Clouds</button>
+      <!-- data-mode="rv"    → RainViewer Leaflet map  -->
+      <!-- data-mode="windy" → Windy iframe            -->
+      <button class="ov-btn active" data-mode="rv"    data-color="6">Radar</button>
+      <button class="ov-btn"        data-mode="rv"    data-color="2">Rain</button>
+      <button class="ov-btn"        data-mode="windy" data-overlay="wind"   data-product="ecmwf">Wind</button>
+      <button class="ov-btn"        data-mode="windy" data-overlay="temp"   data-product="ecmwf">Temp</button>
+      <button class="ov-btn"        data-mode="windy" data-overlay="clouds" data-product="ecmwf">Clouds</button>
     </div>
 
     <button id="locate-btn">📍 Update Location</button>
 
   </aside>
 
-  <!-- ── MAP (Windy embed) ──────────────────────── -->
+  <!-- ── MAP AREA ───────────────────────────────── -->
   <div id="map-wrap">
+
+    <!-- Leaflet map (RainViewer radar) -->
+    <div id="leaflet-map" class="visible"></div>
+
+    <!-- Windy iframe (wind / temp / clouds) -->
     <iframe id="windy-frame" src="" allowfullscreen></iframe>
+
+    <!-- Live pill -->
     <div id="live-pill">
       <div class="pulse-dot"></div>
-      <span id="pill-text">Windy Live</span>
+      <span id="pill-text">Radar · RainViewer</span>
     </div>
-  </div>
 
-</div>
+    <!-- ── Radar Playback Bar ────────────────────── -->
+    <div id="radar-bar" class="visible">
+      <button id="rb-play" title="Play / Pause">▶</button>
 
+      <div id="rb-scrubber">
+        <!-- Frame tick marks (one per fetched frame) -->
+        <div id="rb-ticks"></div>
+        <!-- Continuous filled progress track -->
+        <div id="rb-track">
+          <div id="rb-fill"></div>
+          <!-- Draggable thumb -->
+          <div id="rb-thumb"></div>
+        </div>
+      </div>
+
+      <div id="rb-meta">
+        <span id="rb-time">--:-- --</span>
+        <span id="rb-label">PAST</span>
+      </div>
+    </div>
+
+  </div><!-- /map-wrap -->
+
+</div><!-- /app -->
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- App logic -->
 <script src="app.js"></script>
 </body>

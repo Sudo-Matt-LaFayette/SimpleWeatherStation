@@ -1,55 +1,52 @@
 'use strict';
 
 // ─────────────────────────────────────────────────────────────────
-//  CONFIG — the only place you need to touch to change location,
-//  zoom, or default overlay.
+//  CONFIG
 // ─────────────────────────────────────────────────────────────────
 var CONFIG = {
-  lat:            34.0289,      // Johns Creek, GA
-  lon:           -84.1986,
-  zoom:           10,           // initial Windy zoom level
-  defaultOverlay: 'radar',
-  defaultProduct: 'radar',
-  weatherRefreshMs: 15 * 60 * 1000   // how often to re-fetch weather (15 min)
+  lat:              34.0289,    // Johns Creek, GA
+  lon:             -84.1986,
+  zoom:             7,
+  weatherRefreshMs: 15 * 60 * 1000,
+  radarRefreshMs:   2 * 60 * 1000,  // Refresh radar every 2 minutes for current frames
+  animDelayMs:      1200
 };
 
 // ─────────────────────────────────────────────────────────────────
 //  WMO WEATHER CODE MAP
-//  Maps Open-Meteo's WMO codes → human label + emoji icon.
 // ─────────────────────────────────────────────────────────────────
 var WMO = {
-  0:  { l: 'Clear Sky',         i: '☀️'  },
-  1:  { l: 'Mainly Clear',      i: '🌤️' },
-  2:  { l: 'Partly Cloudy',     i: '⛅'  },
-  3:  { l: 'Overcast',          i: '☁️'  },
-  45: { l: 'Foggy',             i: '🌫️' },
-  48: { l: 'Rime Fog',          i: '🌫️' },
-  51: { l: 'Light Drizzle',     i: '🌦️' },
-  53: { l: 'Drizzle',           i: '🌦️' },
-  55: { l: 'Heavy Drizzle',     i: '🌧️' },
-  61: { l: 'Light Rain',        i: '🌧️' },
-  63: { l: 'Rain',              i: '🌧️' },
-  65: { l: 'Heavy Rain',        i: '🌧️' },
-  71: { l: 'Light Snow',        i: '🌨️' },
-  73: { l: 'Snow',              i: '❄️'  },
-  75: { l: 'Heavy Snow',        i: '❄️'  },
-  77: { l: 'Snow Grains',       i: '🌨️' },
-  80: { l: 'Rain Showers',      i: '🌦️' },
-  81: { l: 'Showers',           i: '🌧️' },
-  82: { l: 'Heavy Showers',     i: '⛈️'  },
-  95: { l: 'Thunderstorm',      i: '⛈️'  },
-  96: { l: 'T-Storm + Hail',    i: '⛈️'  },
-  99: { l: 'Severe T-Storm',    i: '⛈️'  }
+  0:  { l: 'Clear Sky',      i: '☀️'  },
+  1:  { l: 'Mainly Clear',   i: '🌤️' },
+  2:  { l: 'Partly Cloudy',  i: '⛅'  },
+  3:  { l: 'Overcast',       i: '☁️'  },
+  45: { l: 'Foggy',          i: '🌫️' },
+  48: { l: 'Rime Fog',       i: '🌫️' },
+  51: { l: 'Light Drizzle',  i: '🌦️' },
+  53: { l: 'Drizzle',        i: '🌦️' },
+  55: { l: 'Heavy Drizzle',  i: '🌧️' },
+  61: { l: 'Light Rain',     i: '🌧️' },
+  63: { l: 'Rain',           i: '🌧️' },
+  65: { l: 'Heavy Rain',     i: '🌧️' },
+  71: { l: 'Light Snow',     i: '🌨️' },
+  73: { l: 'Snow',           i: '❄️'  },
+  75: { l: 'Heavy Snow',     i: '❄️'  },
+  77: { l: 'Snow Grains',    i: '🌨️' },
+  80: { l: 'Rain Showers',   i: '🌦️' },
+  81: { l: 'Showers',        i: '🌧️' },
+  82: { l: 'Heavy Showers',  i: '⛈️'  },
+  95: { l: 'Thunderstorm',   i: '⛈️'  },
+  96: { l: 'T-Storm + Hail', i: '⛈️'  },
+  99: { l: 'Severe T-Storm', i: '⛈️'  }
 };
 
 // ─────────────────────────────────────────────────────────────────
 //  CLOCK MODULE
-//  Updates #time-display and #date-display every second.
 // ─────────────────────────────────────────────────────────────────
 var Clock = (function () {
-  var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  var MONTHS = ['January','February','March','April','May','June','July',
-                'August','September','October','November','December'];
+  var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
 
   function update() {
     var now = new Date();
@@ -62,118 +59,361 @@ var Clock = (function () {
   }
 
   function start() { update(); setInterval(update, 1000); }
-
   return { start: start };
 })();
 
 // ─────────────────────────────────────────────────────────────────
 //  WEATHER MODULE
-//  Fetches current conditions from Open-Meteo (free, no key).
-//  Renders into the sidebar conditions + stats cards.
 // ─────────────────────────────────────────────────────────────────
 var Weather = (function () {
 
   function fetch(lat, lon) {
     var url = 'https://api.open-meteo.com/v1/forecast' +
-      '?latitude='  + lat +
-      '&longitude=' + lon +
+      '?latitude='  + lat + '&longitude=' + lon +
       '&current=temperature_2m,relative_humidity_2m,apparent_temperature,' +
       'weather_code,wind_speed_10m,dew_point_2m,visibility' +
       '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto';
 
     window.fetch(url)
       .then(function (r) { return r.json(); })
-      .then(function (data) { render(data.current); })
+      .then(function (d) { render(d.current); })
       .catch(function () {
         document.getElementById('condition-text').textContent = 'Weather unavailable';
       });
   }
 
   function render(c) {
-    var info = WMO[c.weather_code] || { l: 'Unknown', i: '🌡️' };
+    var info  = WMO[c.weather_code] || { l: 'Unknown', i: '🌡️' };
     var visMi = c.visibility != null ? (c.visibility / 1609.34).toFixed(1) : '--';
-
     document.getElementById('temp-icon').textContent      = info.i;
     document.getElementById('temp-value').textContent     = Math.round(c.temperature_2m);
     document.getElementById('condition-text').textContent = info.l;
-    document.getElementById('feels-like').textContent     = 'Feels like ' + Math.round(c.apparent_temperature) + '°F';
-    document.getElementById('s-humidity').innerHTML       = c.relative_humidity_2m + '<span class="stat-unit">%</span>';
-    document.getElementById('s-wind').innerHTML           = Math.round(c.wind_speed_10m) + '<span class="stat-unit">mph</span>';
-    document.getElementById('s-dew').innerHTML            = Math.round(c.dew_point_2m) + '<span class="stat-unit">°F</span>';
-    document.getElementById('s-vis').innerHTML            = visMi + '<span class="stat-unit">mi</span>';
+    document.getElementById('feels-like').textContent     =
+      'Feels like ' + Math.round(c.apparent_temperature) + '°F';
+    document.getElementById('s-humidity').innerHTML =
+      c.relative_humidity_2m + '<span class="stat-unit">%</span>';
+    document.getElementById('s-wind').innerHTML =
+      Math.round(c.wind_speed_10m) + '<span class="stat-unit">mph</span>';
+    document.getElementById('s-dew').innerHTML =
+      Math.round(c.dew_point_2m) + '<span class="stat-unit">°F</span>';
+    document.getElementById('s-vis').innerHTML =
+      visMi + '<span class="stat-unit">mi</span>';
   }
 
   return { fetch: fetch };
 })();
 
 // ─────────────────────────────────────────────────────────────────
-//  WINDY MODULE
-//  Builds the embed URL and manages the iframe + overlay buttons.
-//  Windy's official embed endpoint: embed.windy.com/embed2.html
+//  WINDY MODULE  (iframe — Wind / Temp / Clouds only)
 // ─────────────────────────────────────────────────────────────────
 var Windy = (function () {
 
   function buildUrl(lat, lon, zoom, overlay, product) {
-    var p = [
-      'lat='         + lat,
-      'lon='         + lon,
-      'detailLat='   + lat,
-      'detailLon='   + lon,
-      'zoom='        + zoom,
-      'level=surface',
-      'overlay='     + overlay,
-      'product='     + product,
-      'menu=',
-      'message=true',
-      'marker=true',
-      'calendar=now',
-      'pressure=',
-      'type=map',
-      'location=coordinates',
-      'detail=',
-      'metricWind=mph',
-      'metricTemp=%C2%B0F',
-      'radarRange=-1'
-    ];
-    return 'https://embed.windy.com/embed2.html?' + p.join('&');
+    return 'https://embed.windy.com/embed2.html?' + [
+      'lat=' + lat, 'lon=' + lon,
+      'detailLat=' + lat, 'detailLon=' + lon,
+      'zoom=' + zoom, 'level=surface',
+      'overlay=' + overlay, 'product=' + product,
+      'menu=', 'message=true', 'marker=true', 'calendar=now',
+      'pressure=', 'type=map', 'location=coordinates', 'detail=',
+      'metricWind=mph', 'metricTemp=%C2%B0F', 'radarRange=-1'
+    ].join('&');
   }
 
   function load(lat, lon, zoom, overlay, product) {
-    var frame = document.getElementById('windy-frame');
-    frame.src = buildUrl(lat, lon, zoom, overlay, product);
-
+    document.getElementById('windy-frame').src = buildUrl(lat, lon, zoom, overlay, product);
     var label = overlay.charAt(0).toUpperCase() + overlay.slice(1);
     document.getElementById('pill-text').textContent = label + ' · Windy Live';
   }
 
-  function initButtons(lat, lon, zoom) {
-    document.querySelectorAll('.ov-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        document.querySelectorAll('.ov-btn').forEach(function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        load(lat, lon, zoom,
-          btn.getAttribute('data-overlay'),
-          btn.getAttribute('data-product'));
+  return { load: load };
+})();
+
+// ─────────────────────────────────────────────────────────────────
+//  RAINVIEWER MODULE
+//
+//  Double-buffer architecture: Two permanent tile layers alternate
+//  between visible (opacity 0.85) and hidden (opacity 0).
+//  The hidden layer preloads the next frame silently, never calling
+//  setUrl() on a layer with in-flight tiles. Swap only when BOTH
+//  conditions are met: delay elapsed AND hidden layer finished loading.
+//  This eliminates NS_BINDING_ABORTED entirely.
+// ─────────────────────────────────────────────────────────────────
+var RainViewer = (function () {
+
+  var map          = null;
+  var layerA       = null;
+  var layerB       = null;
+  var visibleLayer = null;  // points to either layerA or layerB
+  var hiddenLayer  = null;  // points to the other one
+  var frames       = [];
+  var animPos      = 0;
+  var animTimer    = null;
+  var playing      = false;
+  var apiData      = {};
+  var colorScheme  = 6;
+
+  // Swap state machine
+  var delayDone    = false;
+  var loadDone     = false;
+
+  var TILE_SIZE = 256;
+  var OPACITY   = 0.85;
+
+  function tileUrl(path) {
+    return apiData.host + path + '/' + TILE_SIZE +
+           '/{z}/{x}/{y}/' + colorScheme + '/1_1.png';
+  }
+
+  // ── Map init ──────────────────────────────────────────
+  function initMap(lat, lon, zoom) {
+    if (map) return;
+
+    map = L.map('leaflet-map', {
+      zoomControl: true,
+      attributionControl: false
+    }).setView([lat, lon], zoom);
+
+    L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+      { maxZoom: 19, subdomains: 'abcd' }
+    ).addTo(map);
+
+    L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
+      { maxZoom: 19, subdomains: 'abcd', zIndex: 10, opacity: 0.7 }
+    ).addTo(map);
+
+    setTimeout(function () { map.invalidateSize(); }, 150);
+    initScrubberEvents();
+  }
+
+  // ── Fetch frame list ──────────────────────────────────
+  function fetchData(onReady) {
+    window.fetch('https://api.rainviewer.com/public/weather-maps.json')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        apiData = data;
+        var past    = (data.radar.past    || []).map(function (f) {
+          return { time: f.time, path: f.path, type: 'past' };
+        });
+        var nowcast = (data.radar.nowcast || []).map(function (f) {
+          return { time: f.time, path: f.path, type: 'nowcast' };
+        });
+        frames = past.concat(nowcast);
+        buildTicks();
+        if (typeof onReady === 'function') onReady();
+      })
+      .catch(function (e) { console.error('[RainViewer] fetch failed:', e); });
+  }
+
+  // ── Swap visible ↔ hidden layers ──────────────────────
+  function swapLayers() {
+    visibleLayer.setOpacity(OPACITY);
+    hiddenLayer.setOpacity(0);
+    var temp = visibleLayer;
+    visibleLayer = hiddenLayer;
+    hiddenLayer = temp;
+  }
+
+  // ── Try to swap if both conditions are met ────────────
+  function trySwap() {
+    if (delayDone && loadDone) {
+      swapLayers();
+      // Advance frame counter now that we've swapped to the next frame
+      animPos = (animPos + 1) % frames.length;
+      updateBarUI(animPos);
+      updateTimeLabel(frames[animPos]);
+      // Start loading the frame after next in the hidden buffer
+      scheduleNextLoad();
+    }
+  }
+
+  // ── Load next frame into hidden buffer ────────────────
+  function scheduleNextLoad() {
+    if (!playing) return;
+
+    var nextPos = (animPos + 1) % frames.length;
+    var url = tileUrl(frames[nextPos].path);
+    hiddenLayer.setUrl(url);
+
+    // Reset swap state for the NEXT swap
+    delayDone = false;
+    loadDone = false;
+
+    // Timer for delay
+    animTimer = setTimeout(function () {
+      delayDone = true;
+      trySwap();
+    }, CONFIG.animDelayMs);
+
+    // Listen for load — but check isLoading() first for cache hits (Lesson 9)
+    hiddenLayer.off('load');  // Clear any old listeners
+    if (!hiddenLayer.isLoading()) {
+      // Already cached, tiles are done
+      loadDone = true;
+      trySwap();
+    } else {
+      // Tiles in-flight, wait for load
+      hiddenLayer.once('load', function () {
+        loadDone = true;
+        trySwap();
       });
+    }
+  }
+
+  // ── Show one frame immediately (manual scrub) ────────
+  function showFrame(pos, andThenPlay) {
+    if (!frames.length || !map) return;
+
+    pos     = ((pos % frames.length) + frames.length) % frames.length;
+    animPos = pos;
+
+    var url = tileUrl(frames[pos].path);
+
+    // Initialize both buffers on first call
+    if (!layerA) {
+      layerA = L.tileLayer(url, {
+        opacity: OPACITY, zIndex: 5, transparent: true
+      }).addTo(map);
+      visibleLayer = layerA;
+
+      var nextUrl = tileUrl(frames[(pos + 1) % frames.length].path);
+      layerB = L.tileLayer(nextUrl, {
+        opacity: 0, zIndex: 5, transparent: true
+      }).addTo(map);
+      hiddenLayer = layerB;
+    } else {
+      // Manual scrub: put the frame directly in visible layer
+      visibleLayer.setUrl(url);
+    }
+
+    updateBarUI(pos);
+    updateTimeLabel(frames[pos]);
+
+    if (andThenPlay) scheduleNextLoad();
+  }
+
+  function clearPending() {
+    if (animTimer) { clearTimeout(animTimer); animTimer = null; }
+  }
+
+  // ── Play / stop ───────────────────────────────────────
+  function play() {
+    if (!frames.length) return;
+    clearPending();
+    playing = true;
+    document.getElementById('rb-play').textContent = '⏸';
+    showFrame(animPos, true);
+  }
+
+  function stop() {
+    playing = false;
+    clearPending();
+    document.getElementById('rb-play').textContent = '▶';
+  }
+
+  function togglePlay() { if (playing) stop(); else play(); }
+
+  // ── Color scheme (Radar ↔ Rain) ───────────────────────
+  function setColorScheme(scheme) {
+    colorScheme = scheme;
+    clearPending();
+    playing = false;
+    if (layerA) { map.removeLayer(layerA); layerA = null; }
+    if (layerB) { map.removeLayer(layerB); layerB = null; }
+    visibleLayer = null;
+    hiddenLayer = null;
+    showFrame(animPos, false);
+  }
+
+  // ── Pan map ───────────────────────────────────────────
+  function panTo(lat, lon) {
+    if (map) map.setView([lat, lon], CONFIG.zoom);
+  }
+
+  // ── Build tick marks ──────────────────────────────────
+  function buildTicks() {
+    var container = document.getElementById('rb-ticks');
+    container.innerHTML = '';
+    frames.forEach(function (frame, i) {
+      var tick = document.createElement('div');
+      tick.className = 'rb-tick' + (frame.type === 'nowcast' ? ' rb-tick-fc' : '');
+      tick.title = formatTime(frame.time);
+      tick.addEventListener('click', function () { stop(); showFrame(i, false); });
+      container.appendChild(tick);
     });
   }
 
-  return { load: load, initButtons: initButtons };
+  function updateBarUI(pos) {
+    var pct = frames.length > 1 ? (pos / (frames.length - 1)) * 100 : 0;
+    document.getElementById('rb-fill').style.width = pct + '%';
+    document.getElementById('rb-thumb').style.left = pct + '%';
+    document.querySelectorAll('.rb-tick').forEach(function (t, i) {
+      t.classList.toggle('active', i === pos);
+    });
+  }
+
+  function updateTimeLabel(frame) {
+    document.getElementById('rb-time').textContent = formatTime(frame.time);
+    var badge = document.getElementById('rb-label');
+    badge.textContent = frame.type === 'nowcast' ? 'FORECAST' : 'PAST';
+    badge.className   = 'rb-label-badge' + (frame.type === 'nowcast' ? ' fc' : '');
+  }
+
+  function formatTime(ts) {
+    var d  = new Date(ts * 1000);
+    var h  = d.getHours();
+    var m  = String(d.getMinutes()).padStart(2, '0');
+    return ((h % 12) || 12) + ':' + m + ' ' + (h >= 12 ? 'PM' : 'AM');
+  }
+
+  // ── Scrubber drag ─────────────────────────────────────
+  function initScrubberEvents() {
+    var track    = document.getElementById('rb-track');
+    var dragging = false;
+
+    function seek(e) {
+      var rect    = track.getBoundingClientRect();
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var pct     = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      stop();
+      showFrame(Math.round(pct * (frames.length - 1)), false);
+    }
+
+    track.addEventListener('mousedown',  function (e) { dragging = true; seek(e); });
+    track.addEventListener('touchstart', function (e) { dragging = true; seek(e); }, { passive: true });
+    document.addEventListener('mousemove',  function (e) { if (dragging) seek(e); });
+    document.addEventListener('touchmove',  function (e) { if (dragging) seek(e); }, { passive: true });
+    document.addEventListener('mouseup',    function ()  { dragging = false; });
+    document.addEventListener('touchend',   function ()  { dragging = false; });
+  }
+
+  // ── Start ─────────────────────────────────────────────
+  function start(lat, lon, zoom) {
+    initMap(lat, lon, zoom);
+    fetchData(function () { showFrame(0, false); play(); });
+    setInterval(function () {
+      fetchData(function () { showFrame(animPos, playing); });
+    }, CONFIG.radarRefreshMs);
+  }
+
+  return { start: start, panTo: panTo, play: play, stop: stop,
+           togglePlay: togglePlay, setColorScheme: setColorScheme };
 })();
 
 // ─────────────────────────────────────────────────────────────────
 //  LOCATION MODULE
-//  Reverse-geocodes via Nominatim (free, no key) and updates the
-//  sidebar label. Also triggers a weather + iframe refresh.
 // ─────────────────────────────────────────────────────────────────
 var Location = (function () {
 
   function reverseGeocode(lat, lon) {
-    window.fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lon + '&format=json')
+    window.fetch('https://nominatim.openstreetmap.org/reverse?lat=' +
+      lat + '&lon=' + lon + '&format=json')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        var a    = data.address || {};
-        var city = a.city || a.town || a.village || a.county || 'Unknown';
+        var a = data.address || {};
+        var city  = a.city || a.town || a.village || a.county || 'Unknown';
         var state = a.state || '';
         document.getElementById('location-display').textContent =
           '📍 ' + city + (state ? ', ' + state : '');
@@ -196,45 +436,71 @@ var Location = (function () {
 })();
 
 // ─────────────────────────────────────────────────────────────────
-//  BOOT — wires everything together
+//  BOOT
 // ─────────────────────────────────────────────────────────────────
 (function boot() {
-  // Current active lat/lon (may be updated by geolocation)
   var lat  = CONFIG.lat;
   var lon  = CONFIG.lon;
   var zoom = CONFIG.zoom;
 
-  // Start clock
   Clock.start();
-
-  // Load Windy iframe at default location + overlay
-  Windy.load(lat, lon, zoom, CONFIG.defaultOverlay, CONFIG.defaultProduct);
-  Windy.initButtons(lat, lon, zoom);
-
-  // Load weather panel
   Weather.fetch(lat, lon);
-
-  // Auto-refresh weather on a timer
   setInterval(function () { Weather.fetch(lat, lon); }, CONFIG.weatherRefreshMs);
 
-  // Geolocation — "Update Location" button
+  RainViewer.start(lat, lon, zoom);
+
+  document.getElementById('rb-play').addEventListener('click', function () {
+    RainViewer.togglePlay();
+  });
+
+  var currentMode = 'rv';
+
+  function applyMode(btn) {
+    var mode = btn.getAttribute('data-mode');
+    document.querySelectorAll('.ov-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+
+    var leafletEl = document.getElementById('leaflet-map');
+    var windyEl   = document.getElementById('windy-frame');
+    var barEl     = document.getElementById('radar-bar');
+
+    if (mode === 'rv') {
+      leafletEl.classList.add('visible');
+      windyEl.classList.remove('visible');
+      barEl.classList.add('visible');
+      RainViewer.setColorScheme(parseInt(btn.getAttribute('data-color') || '6', 10));
+      RainViewer.play();
+      document.getElementById('pill-text').textContent = 'Radar · RainViewer';
+    } else {
+      leafletEl.classList.remove('visible');
+      windyEl.classList.add('visible');
+      barEl.classList.remove('visible');
+      RainViewer.stop();
+      Windy.load(lat, lon, zoom,
+        btn.getAttribute('data-overlay'),
+        btn.getAttribute('data-product'));
+    }
+    currentMode = mode;
+  }
+
+  document.querySelectorAll('.ov-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () { applyMode(btn); });
+  });
+
   document.getElementById('locate-btn').addEventListener('click', function () {
     Location.detect(
       function (newLat, newLon) {
         lat = newLat; lon = newLon;
-
-        // Update weather panel
         Weather.fetch(lat, lon);
         Location.reverseGeocode(lat, lon);
-
-        // Reload Windy iframe centered on new location
-        var active = document.querySelector('.ov-btn.active');
-        Windy.load(lat, lon, zoom,
-          active.getAttribute('data-overlay'),
-          active.getAttribute('data-product'));
-
-        // Re-bind buttons with new coords
-        Windy.initButtons(lat, lon, zoom);
+        if (currentMode === 'rv') {
+          RainViewer.panTo(lat, lon);
+        } else {
+          var active = document.querySelector('.ov-btn.active');
+          Windy.load(lat, lon, zoom,
+            active.getAttribute('data-overlay'),
+            active.getAttribute('data-product'));
+        }
       },
       function () {
         document.getElementById('location-display').textContent = '📍 Permission denied';

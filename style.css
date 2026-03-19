@@ -8,6 +8,7 @@
   --sky2:   #0ea5e9;
   --storm:  #6366f1;
   --safe:   #34d399;
+  --warn:   #f59e0b;
   --text:   #e2eeff;
   --dim:    #4a6080;
   --faint:  rgba(255,255,255,0.05);
@@ -149,11 +150,58 @@ body::before {
 #locate-btn:hover { background: rgba(56,189,248,0.12); border-color: var(--sky); }
 
 /* ── Map area ─────────────────────────────────────── */
-#map-wrap { position: relative; overflow: hidden; }
+#map-wrap {
+  position: relative;
+  overflow: hidden;
+  height: 100vh;
+}
 
-#windy-frame { width: 100%; height: 100%; border: none; display: block; }
+/* ── Leaflet map ──────────────────────────────────── */
+#leaflet-map {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  bottom: 68px;
+}
 
-/* Live pill badge */
+#leaflet-map.visible {
+  display: block;
+}
+
+/* Override Leaflet's default light attribution */
+.leaflet-control-attribution {
+  background: rgba(10,15,30,0.75) !important;
+  color: var(--dim) !important;
+  font-size: .6rem !important;
+  backdrop-filter: blur(6px);
+}
+.leaflet-control-attribution a { color: var(--sky) !important; }
+
+/* Zoom controls */
+.leaflet-control-zoom a {
+  background: rgba(10,15,30,0.85) !important;
+  color: var(--text) !important;
+  border-color: var(--rim) !important;
+}
+.leaflet-control-zoom a:hover {
+  background: rgba(56,189,248,0.15) !important;
+  color: var(--sky) !important;
+}
+
+/* ── Windy iframe ─────────────────────────────────── */
+#windy-frame {
+  display: none;           /* hidden until .visible is applied   */
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  border: none;
+}
+
+#windy-frame.visible {
+  display: block;
+}
+
+/* ── Live pill badge ──────────────────────────────── */
 #live-pill {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
   background: rgba(10,15,30,0.82); backdrop-filter: blur(12px);
@@ -172,4 +220,153 @@ body::before {
 @keyframes pulseGlow {
   0%, 100% { opacity: 1; transform: scale(1);   }
   50%       { opacity: .3; transform: scale(.75); }
+}
+
+/* ── Radar Playback Bar ───────────────────────────── */
+#radar-bar {
+  display: none;                /* hidden until .visible is applied  */
+  align-items: center;
+  gap: 12px;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 68px;
+  padding: 0 18px;
+  background: rgba(8, 12, 26, 0.92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--rim);
+  z-index: 700;
+}
+
+#radar-bar.visible {
+  display: flex;
+}
+
+/* Play / Pause button */
+#rb-play {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(56,189,248,0.1);
+  border: 1px solid rgba(56,189,248,0.35);
+  color: var(--sky);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+#rb-play:hover {
+  background: rgba(56,189,248,0.22);
+  border-color: var(--sky);
+  box-shadow: 0 0 12px rgba(56,189,248,0.3);
+}
+
+/* Scrubber wrapper — takes all remaining space */
+#rb-scrubber {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Tick marks (one per frame) ────────────────────── */
+#rb-ticks {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 16px;
+}
+
+.rb-tick {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background .12s, height .12s, transform .12s;
+}
+
+/* Forecast frames get a different tint */
+.rb-tick-fc {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+.rb-tick.active {
+  background: var(--sky);
+  height: 14px;
+  box-shadow: 0 0 8px rgba(56,189,248,0.6);
+}
+
+.rb-tick:hover {
+  background: rgba(56,189,248,0.5);
+  transform: scaleY(1.2);
+}
+
+/* ── Continuous scrub track ─────────────────────────── */
+#rb-track {
+  position: relative;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#rb-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--storm), var(--sky));
+  border-radius: 4px;
+  width: 0%;
+  transition: width .25s linear;
+  pointer-events: none;
+}
+
+/* Draggable thumb */
+#rb-thumb {
+  position: absolute;
+  top: 50%; left: 0%;
+  width: 12px; height: 12px;
+  background: var(--sky);
+  border: 2px solid rgba(10,15,30,0.9);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(56,189,248,0.6);
+  pointer-events: none;
+  transition: left .25s linear;
+}
+
+/* ── Meta: time + badge ─────────────────────────────── */
+#rb-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+#rb-time {
+  font-family: 'DM Mono', monospace;
+  font-size: .8rem;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.rb-label-badge {
+  font-family: 'DM Mono', monospace;
+  font-size: .55rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: var(--safe);
+}
+
+/* Forecast badge variant */
+.rb-label-badge.fc {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--warn);
 }
