@@ -44,27 +44,10 @@
       <div id="feels-like">Feels like --°F</div>
     </div>
 
-    <!-- Atmospheric stats -->
+    <!-- Forecast tiles -->
     <div class="glass-card">
-      <div class="card-label">Atmospheric</div>
-      <div id="stats-grid">
-        <div class="stat">
-          <div class="stat-lbl">Humidity</div>
-          <div class="stat-val" id="s-humidity">--<span class="stat-unit">%</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-lbl">Wind</div>
-          <div class="stat-val" id="s-wind">--<span class="stat-unit">mph</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-lbl">Dew Pt</div>
-          <div class="stat-val" id="s-dew">--<span class="stat-unit">°F</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-lbl">Visibility</div>
-          <div class="stat-val" id="s-vis">--<span class="stat-unit">mi</span></div>
-        </div>
-      </div>
+      <div class="card-label">5-Day Forecast</div>
+      <div id="forecast-tiles"></div>
     </div>
 
     <!-- Map layer switcher -->
@@ -116,13 +99,6 @@
       <div id="rb-meta">
         <span id="rb-time">--:-- --</span>
         <span id="rb-label">PAST</span>
-      </div>
-
-      <button id="rb-refresh" title="Refresh radar data">🔄</button>
-      
-      <div id="rb-updated">
-        <span id="rb-updated-label">Updated</span>
-        <span id="rb-updated-time">--:--</span>
       </div>
     </div>
 

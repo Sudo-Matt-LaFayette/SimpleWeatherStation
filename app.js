@@ -8,7 +8,7 @@ var CONFIG = {
   lon:             -84.1986,
   zoom:             7,
   weatherRefreshMs: 15 * 60 * 1000,
-  radarRefreshMs:   5 * 60 * 1000,  // 5 minutes (more frequent)
+  radarRefreshMs:   10 * 60 * 1000,
   animDelayMs:      1200
 };
 
@@ -66,17 +66,22 @@ var Clock = (function () {
 //  WEATHER MODULE
 // ─────────────────────────────────────────────────────────────────
 var Weather = (function () {
+  var DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   function fetch(lat, lon) {
     var url = 'https://api.open-meteo.com/v1/forecast' +
       '?latitude='  + lat + '&longitude=' + lon +
       '&current=temperature_2m,relative_humidity_2m,apparent_temperature,' +
       'weather_code,wind_speed_10m,dew_point_2m,visibility' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
       '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto';
 
     window.fetch(url)
       .then(function (r) { return r.json(); })
-      .then(function (d) { render(d.current); })
+      .then(function (d) {
+        render(d.current);
+        renderForecast(d.daily);
+      })
       .catch(function () {
         document.getElementById('condition-text').textContent = 'Weather unavailable';
       });
@@ -84,20 +89,39 @@ var Weather = (function () {
 
   function render(c) {
     var info  = WMO[c.weather_code] || { l: 'Unknown', i: '🌡️' };
-    var visMi = c.visibility != null ? (c.visibility / 1609.34).toFixed(1) : '--';
     document.getElementById('temp-icon').textContent      = info.i;
     document.getElementById('temp-value').textContent     = Math.round(c.temperature_2m);
     document.getElementById('condition-text').textContent = info.l;
     document.getElementById('feels-like').textContent     =
       'Feels like ' + Math.round(c.apparent_temperature) + '°F';
-    document.getElementById('s-humidity').innerHTML =
-      c.relative_humidity_2m + '<span class="stat-unit">%</span>';
-    document.getElementById('s-wind').innerHTML =
-      Math.round(c.wind_speed_10m) + '<span class="stat-unit">mph</span>';
-    document.getElementById('s-dew').innerHTML =
-      Math.round(c.dew_point_2m) + '<span class="stat-unit">°F</span>';
-    document.getElementById('s-vis').innerHTML =
-      visMi + '<span class="stat-unit">mi</span>';
+  }
+
+  function renderForecast(daily) {
+    var container = document.getElementById('forecast-tiles');
+    container.innerHTML = '';
+    
+    // Show next 5 days (skip today which is index 0)
+    for (var i = 1; i <= 5; i++) {
+      if (!daily.time[i]) continue;
+      
+      var date = new Date(daily.time[i]);
+      var dayName = i === 1 ? 'Tomorrow' : DAYS_SHORT[date.getDay()];
+      var code = daily.weather_code[i];
+      var info = WMO[code] || { l: 'Unknown', i: '🌡️' };
+      var high = Math.round(daily.temperature_2m_max[i]);
+      var low  = Math.round(daily.temperature_2m_min[i]);
+
+      var tile = document.createElement('div');
+      tile.className = 'forecast-tile';
+      tile.innerHTML =
+        '<div class="forecast-day">' + dayName + '</div>' +
+        '<div class="forecast-icon">' + info.i + '</div>' +
+        '<div class="forecast-temps">' +
+          '<span class="forecast-high">' + high + '°</span>' +
+          '<span class="forecast-low">' + low + '°</span>' +
+        '</div>';
+      container.appendChild(tile);
+    }
   }
 
   return { fetch: fetch };
@@ -146,7 +170,6 @@ var RainViewer = (function () {
   var playing     = false;
   var apiData     = {};
   var colorScheme = 6;
-  var lastUpdated = null;
 
   var TILE_SIZE = 256;
   var OPACITY   = 0.85;
@@ -192,20 +215,10 @@ var RainViewer = (function () {
           return { time: f.time, path: f.path, type: 'nowcast' };
         });
         frames = past.concat(nowcast);
-        lastUpdated = new Date();
-        updateLastUpdatedDisplay();
         buildTicks();
         if (typeof onReady === 'function') onReady();
       })
       .catch(function (e) { console.error('[RainViewer] fetch failed:', e); });
-  }
-
-  function updateLastUpdatedDisplay() {
-    if (!lastUpdated) return;
-    var h = lastUpdated.getHours();
-    var m = String(lastUpdated.getMinutes()).padStart(2, '0');
-    var timeStr = ((h % 12) || 12) + ':' + m + ' ' + (h >= 12 ? 'PM' : 'AM');
-    document.getElementById('rb-updated-time').textContent = timeStr;
   }
 
   // ── Show one frame ────────────────────────────────────
@@ -245,26 +258,7 @@ var RainViewer = (function () {
       if (radarLayer) radarLayer.off('load', advance);
       clearPending();
       animTimer = setTimeout(function () {
-        if (!playing) return;
-        
-        // Check if we're at the last frame
-        if (animPos >= frames.length - 1) {
-          // Auto-refresh: fetch new data and loop back to start
-          var updateBox = document.getElementById('rb-updated');
-          
-          fetchData(function () {
-            animPos = 0; // Loop back to beginning with fresh data
-            showFrame(animPos, true);
-            
-            // Highlight the updated time briefly
-            updateBox.classList.add('just-updated');
-            setTimeout(function () {
-              updateBox.classList.remove('just-updated');
-            }, 2000);
-          });
-        } else {
-          showFrame(animPos + 1, true);
-        }
+        if (playing) showFrame(animPos + 1, true);
       }, CONFIG.animDelayMs);
     }
 
@@ -305,35 +299,6 @@ var RainViewer = (function () {
   // ── Pan map ───────────────────────────────────────────
   function panTo(lat, lon) {
     if (map) map.setView([lat, lon], CONFIG.zoom);
-  }
-
-  // ── Manual refresh ────────────────────────────────────
-  function refresh() {
-    var wasPlaying = playing;
-    var btn = document.getElementById('rb-refresh');
-    var updateBox = document.getElementById('rb-updated');
-    
-    if (wasPlaying) stop();
-    
-    // Show loading state
-    btn.classList.add('refreshing');
-    
-    fetchData(function () {
-      // Jump to the most recent frame after refresh
-      animPos = frames.length - 1;
-      showFrame(animPos, false);
-      
-      // Remove loading state
-      btn.classList.remove('refreshing');
-      
-      // Highlight the updated time briefly
-      updateBox.classList.add('just-updated');
-      setTimeout(function () {
-        updateBox.classList.remove('just-updated');
-      }, 2000);
-      
-      if (wasPlaying) play();
-    });
   }
 
   // ── Build tick marks ──────────────────────────────────
@@ -402,33 +367,8 @@ var RainViewer = (function () {
     }, CONFIG.radarRefreshMs);
   }
 
-  // ── Manual refresh ────────────────────────────────────
-  function refresh() {
-    var btn = document.getElementById('rb-refresh');
-    var updatedDiv = document.getElementById('rb-updated');
-    
-    // Add refreshing animation
-    if (btn) btn.classList.add('refreshing');
-    
-    fetchData(function () {
-      // Remove refreshing animation
-      if (btn) btn.classList.remove('refreshing');
-      
-      // Add "just updated" highlight
-      if (updatedDiv) {
-        updatedDiv.classList.add('just-updated');
-        setTimeout(function () {
-          updatedDiv.classList.remove('just-updated');
-        }, 2000);
-      }
-      
-      // Continue playing if we were playing
-      showFrame(animPos, playing);
-    });
-  }
-
   return { start: start, panTo: panTo, play: play, stop: stop,
-           togglePlay: togglePlay, setColorScheme: setColorScheme, refresh: refresh };
+           togglePlay: togglePlay, setColorScheme: setColorScheme };
 })();
 
 // ─────────────────────────────────────────────────────────────────
@@ -480,10 +420,6 @@ var Location = (function () {
 
   document.getElementById('rb-play').addEventListener('click', function () {
     RainViewer.togglePlay();
-  });
-
-  document.getElementById('rb-refresh').addEventListener('click', function () {
-    RainViewer.refresh();
   });
 
   var currentMode = 'rv';
