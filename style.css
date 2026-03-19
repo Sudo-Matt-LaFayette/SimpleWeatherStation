@@ -370,3 +370,74 @@ body::before {
   border-color: rgba(245, 158, 11, 0.3);
   color: var(--warn);
 }
+
+/* ── Refresh button ───────────────────────────────── */
+#rb-refresh {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--rim);
+  color: var(--dim);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+  margin-left: 8px;
+}
+
+#rb-refresh:hover {
+  background: rgba(56,189,248,0.12);
+  border-color: var(--sky);
+  color: var(--sky);
+  transform: rotate(180deg);
+}
+
+#rb-refresh.refreshing {
+  animation: spin 1s linear infinite;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Last updated timestamp ────────────────────────── */
+#rb-updated {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+  min-width: 70px;
+  margin-left: 8px;
+}
+
+#rb-updated-label {
+  font-family: 'DM Mono', monospace;
+  font-size: .55rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+#rb-updated-time {
+  font-family: 'DM Mono', monospace;
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+
+#rb-updated.just-updated #rb-updated-time {
+  color: var(--sky);
+  text-shadow: 0 0 8px rgba(56,189,248,0.5);
+  animation: fadeToNormal 2s ease-out forwards;
+}
+
+@keyframes fadeToNormal {
+  from { color: var(--sky); text-shadow: 0 0 8px rgba(56,189,248,0.5); }
+  to { color: var(--text); text-shadow: none; }
+}

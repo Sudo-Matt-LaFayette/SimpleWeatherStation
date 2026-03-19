@@ -8,7 +8,7 @@ var CONFIG = {
   lon:             -84.1986,
   zoom:             7,
   weatherRefreshMs: 15 * 60 * 1000,
-  radarRefreshMs:   2 * 60 * 1000,  // Refresh radar every 2 minutes for current frames
+  radarRefreshMs:   5 * 60 * 1000,  // 5 minutes (more frequent)
   animDelayMs:      1200
 };
 
@@ -132,30 +132,21 @@ var Windy = (function () {
 // ─────────────────────────────────────────────────────────────────
 //  RAINVIEWER MODULE
 //
-//  Double-buffer architecture: Two permanent tile layers alternate
-//  between visible (opacity 0.85) and hidden (opacity 0).
-//  The hidden layer preloads the next frame silently, never calling
-//  setUrl() on a layer with in-flight tiles. Swap only when BOTH
-//  conditions are met: delay elapsed AND hidden layer finished loading.
-//  This eliminates NS_BINDING_ABORTED entirely.
+//  Uses ONE tile layer. Animation uses chained setTimeout so we
+//  never swap the URL before the previous frame finishes loading.
+//  This eliminates NS_BINDING_ABORTED completely.
 // ─────────────────────────────────────────────────────────────────
 var RainViewer = (function () {
 
-  var map          = null;
-  var layerA       = null;
-  var layerB       = null;
-  var visibleLayer = null;  // points to either layerA or layerB
-  var hiddenLayer  = null;  // points to the other one
-  var frames       = [];
-  var animPos      = 0;
-  var animTimer    = null;
-  var playing      = false;
-  var apiData      = {};
-  var colorScheme  = 6;
-
-  // Swap state machine
-  var delayDone    = false;
-  var loadDone     = false;
+  var map         = null;
+  var radarLayer  = null;
+  var frames      = [];
+  var animPos     = 0;
+  var animTimer   = null;
+  var playing     = false;
+  var apiData     = {};
+  var colorScheme = 6;
+  var lastUpdated = null;
 
   var TILE_SIZE = 256;
   var OPACITY   = 0.85;
@@ -201,68 +192,24 @@ var RainViewer = (function () {
           return { time: f.time, path: f.path, type: 'nowcast' };
         });
         frames = past.concat(nowcast);
+        lastUpdated = new Date();
+        updateLastUpdatedDisplay();
         buildTicks();
         if (typeof onReady === 'function') onReady();
       })
       .catch(function (e) { console.error('[RainViewer] fetch failed:', e); });
   }
 
-  // ── Swap visible ↔ hidden layers ──────────────────────
-  function swapLayers() {
-    visibleLayer.setOpacity(OPACITY);
-    hiddenLayer.setOpacity(0);
-    var temp = visibleLayer;
-    visibleLayer = hiddenLayer;
-    hiddenLayer = temp;
+  function updateLastUpdatedDisplay() {
+    if (!lastUpdated) return;
+    var h = lastUpdated.getHours();
+    var m = String(lastUpdated.getMinutes()).padStart(2, '0');
+    var timeStr = ((h % 12) || 12) + ':' + m + ' ' + (h >= 12 ? 'PM' : 'AM');
+    document.getElementById('rb-updated-time').textContent = timeStr;
   }
 
-  // ── Try to swap if both conditions are met ────────────
-  function trySwap() {
-    if (delayDone && loadDone) {
-      swapLayers();
-      // Advance frame counter now that we've swapped to the next frame
-      animPos = (animPos + 1) % frames.length;
-      updateBarUI(animPos);
-      updateTimeLabel(frames[animPos]);
-      // Start loading the frame after next in the hidden buffer
-      scheduleNextLoad();
-    }
-  }
-
-  // ── Load next frame into hidden buffer ────────────────
-  function scheduleNextLoad() {
-    if (!playing) return;
-
-    var nextPos = (animPos + 1) % frames.length;
-    var url = tileUrl(frames[nextPos].path);
-    hiddenLayer.setUrl(url);
-
-    // Reset swap state for the NEXT swap
-    delayDone = false;
-    loadDone = false;
-
-    // Timer for delay
-    animTimer = setTimeout(function () {
-      delayDone = true;
-      trySwap();
-    }, CONFIG.animDelayMs);
-
-    // Listen for load — but check isLoading() first for cache hits (Lesson 9)
-    hiddenLayer.off('load');  // Clear any old listeners
-    if (!hiddenLayer.isLoading()) {
-      // Already cached, tiles are done
-      loadDone = true;
-      trySwap();
-    } else {
-      // Tiles in-flight, wait for load
-      hiddenLayer.once('load', function () {
-        loadDone = true;
-        trySwap();
-      });
-    }
-  }
-
-  // ── Show one frame immediately (manual scrub) ────────
+  // ── Show one frame ────────────────────────────────────
+  //  andThenPlay: if true, schedule the next frame after load
   function showFrame(pos, andThenPlay) {
     if (!frames.length || !map) return;
 
@@ -271,27 +218,60 @@ var RainViewer = (function () {
 
     var url = tileUrl(frames[pos].path);
 
-    // Initialize both buffers on first call
-    if (!layerA) {
-      layerA = L.tileLayer(url, {
+    if (!radarLayer) {
+      radarLayer = L.tileLayer(url, {
         opacity: OPACITY, zIndex: 5, transparent: true
       }).addTo(map);
-      visibleLayer = layerA;
-
-      var nextUrl = tileUrl(frames[(pos + 1) % frames.length].path);
-      layerB = L.tileLayer(nextUrl, {
-        opacity: 0, zIndex: 5, transparent: true
-      }).addTo(map);
-      hiddenLayer = layerB;
     } else {
-      // Manual scrub: put the frame directly in visible layer
-      visibleLayer.setUrl(url);
+      radarLayer.setUrl(url);
     }
 
     updateBarUI(pos);
     updateTimeLabel(frames[pos]);
 
-    if (andThenPlay) scheduleNextLoad();
+    if (andThenPlay) scheduleNext();
+  }
+
+  // ── Schedule next frame after current tiles load ──────
+  function scheduleNext() {
+    if (!playing) return;
+    clearPending();
+
+    var fired = false;
+
+    function advance() {
+      if (fired || !playing) return;
+      fired = true;
+      if (radarLayer) radarLayer.off('load', advance);
+      clearPending();
+      animTimer = setTimeout(function () {
+        if (!playing) return;
+        
+        // Check if we're at the last frame
+        if (animPos >= frames.length - 1) {
+          // Auto-refresh: fetch new data and loop back to start
+          var updateBox = document.getElementById('rb-updated');
+          
+          fetchData(function () {
+            animPos = 0; // Loop back to beginning with fresh data
+            showFrame(animPos, true);
+            
+            // Highlight the updated time briefly
+            updateBox.classList.add('just-updated');
+            setTimeout(function () {
+              updateBox.classList.remove('just-updated');
+            }, 2000);
+          });
+        } else {
+          showFrame(animPos + 1, true);
+        }
+      }, CONFIG.animDelayMs);
+    }
+
+    // Advance when tiles finish loading …
+    if (radarLayer) radarLayer.once('load', advance);
+    // … but no longer than 2× animDelayMs regardless
+    animTimer = setTimeout(advance, CONFIG.animDelayMs * 2);
   }
 
   function clearPending() {
@@ -318,18 +298,42 @@ var RainViewer = (function () {
   // ── Color scheme (Radar ↔ Rain) ───────────────────────
   function setColorScheme(scheme) {
     colorScheme = scheme;
-    clearPending();
-    playing = false;
-    if (layerA) { map.removeLayer(layerA); layerA = null; }
-    if (layerB) { map.removeLayer(layerB); layerB = null; }
-    visibleLayer = null;
-    hiddenLayer = null;
+    if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
     showFrame(animPos, false);
   }
 
   // ── Pan map ───────────────────────────────────────────
   function panTo(lat, lon) {
     if (map) map.setView([lat, lon], CONFIG.zoom);
+  }
+
+  // ── Manual refresh ────────────────────────────────────
+  function refresh() {
+    var wasPlaying = playing;
+    var btn = document.getElementById('rb-refresh');
+    var updateBox = document.getElementById('rb-updated');
+    
+    if (wasPlaying) stop();
+    
+    // Show loading state
+    btn.classList.add('refreshing');
+    
+    fetchData(function () {
+      // Jump to the most recent frame after refresh
+      animPos = frames.length - 1;
+      showFrame(animPos, false);
+      
+      // Remove loading state
+      btn.classList.remove('refreshing');
+      
+      // Highlight the updated time briefly
+      updateBox.classList.add('just-updated');
+      setTimeout(function () {
+        updateBox.classList.remove('just-updated');
+      }, 2000);
+      
+      if (wasPlaying) play();
+    });
   }
 
   // ── Build tick marks ──────────────────────────────────
@@ -398,8 +402,33 @@ var RainViewer = (function () {
     }, CONFIG.radarRefreshMs);
   }
 
+  // ── Manual refresh ────────────────────────────────────
+  function refresh() {
+    var btn = document.getElementById('rb-refresh');
+    var updatedDiv = document.getElementById('rb-updated');
+    
+    // Add refreshing animation
+    if (btn) btn.classList.add('refreshing');
+    
+    fetchData(function () {
+      // Remove refreshing animation
+      if (btn) btn.classList.remove('refreshing');
+      
+      // Add "just updated" highlight
+      if (updatedDiv) {
+        updatedDiv.classList.add('just-updated');
+        setTimeout(function () {
+          updatedDiv.classList.remove('just-updated');
+        }, 2000);
+      }
+      
+      // Continue playing if we were playing
+      showFrame(animPos, playing);
+    });
+  }
+
   return { start: start, panTo: panTo, play: play, stop: stop,
-           togglePlay: togglePlay, setColorScheme: setColorScheme };
+           togglePlay: togglePlay, setColorScheme: setColorScheme, refresh: refresh };
 })();
 
 // ─────────────────────────────────────────────────────────────────
@@ -451,6 +480,10 @@ var Location = (function () {
 
   document.getElementById('rb-play').addEventListener('click', function () {
     RainViewer.togglePlay();
+  });
+
+  document.getElementById('rb-refresh').addEventListener('click', function () {
+    RainViewer.refresh();
   });
 
   var currentMode = 'rv';
